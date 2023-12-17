@@ -1,0 +1,33 @@
+<launch>
+    <node
+        pkg="ne-serious"
+        type="diff_drive.py"
+        name="motor_controller" >
+        </node>
+   <node
+     pkg="cv_camera"
+     type="cv_camera_node"
+     name="front_camera" 
+     args="_device_id:=0 _rate:=8" >
+     <remap from="front_camera/image_raw" to="front_camera/image" />
+   </node>
+   <node
+     pkg="cv_camera"
+     type="cv_camera_node"
+     name="rear_camera" 
+     args="_device_id:=1 _rate:=8">
+    <remap from="rear_camera/image_raw" to="rear_camera/image" />
+   </node>
+   <node
+        pkg="image_transport"
+        type="republish"
+        name="front_camera_repub"
+        args="in:=/front_camera/image raw out:=/front_camera/image compressed" >
+    </node>
+    <node
+        pkg="image_transport"
+        type="republish"
+        name="rear_camera_repub"
+        args="in:=/rear_camera/image raw out:=/rear_camera/image compressed" >
+    </node>
+ </launch>
