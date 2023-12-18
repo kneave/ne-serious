@@ -12,12 +12,13 @@ msg_timeout = rospy.Duration(0.5)
 last_msg_received = rospy.Time.from_sec(time.time())
 
 rb = redboard.RedBoard()
-
+tilt = 0.5
 motor0 = 0
 motor1 = 0
 
 rb.m0_invert = False         # front left 
 rb.m1_invert = False        # front right
+rb.s7_config = 750, 1950
 
 # from https://electronics.stackexchange.com/questions/19669/algorithm-for-mixing-2-axis-analog-input-to-control-a-differential-motor-drive
 def steering(x, y):
@@ -42,8 +43,22 @@ def steering(x, y):
 
     return left, right
 
+def scaleinput(input, invert, scale):
+    if scale != 0:
+        scaled = input / scale
+    else:
+        scaled = input
+
+    if(invert):
+        scaled = scaled * -1
+
+    if scaled == -0.0:
+        scaled = 0
+
+    return scaled
+
 def callback(data):
-    global last_msg_received
+    global last_msg_received, tilt
     # rospy.loginfo(rospy.get_caller_id() + 'RCVD: %s', data)
     last_msg_received = rospy.Time.now()
 
@@ -65,6 +80,18 @@ def callback(data):
             right = right
 
         setmotors(left, right)
+
+        tilt_diff = scaleinput(data.axes[4], False, 20)  
+        tilt += tilt_diff   
+
+        if(tilt > 1):
+            tilt = 1
+        elif(tilt < -1):
+            tilt = -1
+        
+        print(tilt)
+        rb.s7 = tilt
+
     else:
         #  print("Motors not enabled.")
         setmotors(0, 0)
