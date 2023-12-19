@@ -66,35 +66,36 @@ def callback(data):
     high_speed = data.buttons[4] == 0
     x, y = data.axes[0], data.axes[1]
 
-    if control_movement == True:
-        # print(data.axes[0], data.axes[1])
+    xbox = True
+
+    # print(data.axes[0], data.axes[1])
+    if xbox == True:
+        right, left = steering(x, y)
+    else:
         left, right = steering(x, y)
 
-        # Buttons are on when down so this makes sense in the physical world
-        if(high_speed == True):
-            # Low speed, halve values
-            left = left * 0.5
-            right = right * 0.5
-        else:
-            left = left
-            right = right
-
-        setmotors(left, right)
-
-        tilt_diff = scaleinput(data.axes[4], False, 20)  
-        tilt += tilt_diff   
-
-        if(tilt > 1):
-            tilt = 1
-        elif(tilt < -1):
-            tilt = -1
-        
-        print(tilt)
-        rb.s7 = tilt
-
+    # Buttons are on when down so this makes sense in the physical world
+    if(high_speed == True):
+        # Low speed, halve values
+        left = left * 0.5
+        right = right * 0.5
     else:
-        #  print("Motors not enabled.")
-        setmotors(0, 0)
+        left = left
+        right = right
+
+    setmotors(left, right)
+
+    tilt_diff = scaleinput(data.axes[4], False, 40)  
+    tilt += tilt_diff   
+
+    if(tilt > 1):
+        tilt = 1
+    elif(tilt < -1):
+        tilt = -1
+    
+    print(tilt)
+    rb.s7 = tilt
+
 
 def setmotors(m1, m2):
     rb.m0 = m1
