@@ -14,6 +14,10 @@ from picamera2 import Picamera2
 from picamera2.encoders import JpegEncoder
 from picamera2.outputs import FileOutput
 
+import board
+import neopixel
+pixels = neopixel.NeoPixel(board.D12, 12)
+
 PAGE = """\
 <html>
 <head>
@@ -61,6 +65,7 @@ class StreamingOutput(io.BufferedIOBase):
     def __init__(self):
         self.frame = None
         self.condition = Condition()
+        self.pixels = pixels
 
     def write(self, buf):
         with self.condition:
@@ -68,7 +73,11 @@ class StreamingOutput(io.BufferedIOBase):
             self.condition.notify_all()
 
 
-class StreamingHandler(server.BaseHTTPRequestHandler):
+class StreamingHandler(server.BaseHTTPRequestHandler):    
+    brightness = 120
+    brightness_min = 50
+    brightness_max = 175
+        
     def do_GET(self):
         if self.path == '/':
             self.send_response(301)
@@ -125,6 +134,25 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
                 logging.warning(
                     'Removed streaming client %s: %s',
                     self.client_address, str(e))
+        elif self.path == '/lights_on':
+            pixels.fill((self.brightness, self.brightness, self.brightness))
+            self.send_response(200)
+        elif self.path == '/lights_off':
+            pixels.fill((0, 0, 0))
+            self.send_response(200)
+        elif self.path == '/lights_up':
+            if self.brightness <= self.brightness_max:
+                self.brightness = self.brightness + 10
+
+            pixels.fill((self.brightness, self.brightness, self.brightness))
+            self.send_response(200)
+        elif self.path == '/lights_down':
+            if self.brightness >= self.brightness_min:
+                self.brightness = self.brightness - 10
+                
+            print(self.brightness)
+            pixels.fill((self.brightness, self.brightness, self.brightness))
+            self.send_response(200)
         else:
             self.send_error(404)
             self.end_headers()
@@ -149,6 +177,9 @@ picam_rear.configure(picam_rear.create_video_configuration(main={"size": (640, 4
 # picam_rear.video_configuration.controls.FrameRate = 18.0
 output_rear = StreamingOutput()
 picam_rear.start_recording(JpegEncoder(), FileOutput(output_rear))
+
+# pixels.fill((125, 125, 125))
+# pixels.fill((0, 0, 0))
 
 try:
     address = ('', 8000)
