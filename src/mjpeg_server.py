@@ -8,14 +8,29 @@ import io
 import logging
 import socketserver
 from http import server
-from threading import Condition
+from threading import Condition, Thread
 
 from picamera2 import Picamera2
 from picamera2.encoders import JpegEncoder
 from picamera2.outputs import FileOutput
 
+import rospy
+from sensor_msgs.msg import CompressedImage
+import cv2
+import numpy as np
+
 import board
 import neopixel
+
+import signal
+
+def signal_handler(signal, frame):
+    rospy.signal_shutdown()
+    print('CTRL-C caught, exiting.')
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
+
 pixels = neopixel.NeoPixel(board.D12, 12)
 
 PAGE = """\
@@ -98,7 +113,7 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=FRAME')
             self.end_headers()
             try:
-                while True:
+                while not rospy.is_shutdown():
                     with output_front.condition:
                         output_front.condition.wait()
                         frame_front = output_front.frame
@@ -119,8 +134,8 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
             self.send_header('Pragma', 'no-cache')
             self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=FRAME')
             self.end_headers()
-            try:
-                while True:
+            try:    
+                while not rospy.is_shutdown():
                     with output_rear.condition:
                         output_rear.condition.wait()
                         frame_rear = output_rear.frame
@@ -163,6 +178,41 @@ class StreamingServer(socketserver.ThreadingMixIn, server.HTTPServer):
     daemon_threads = True
 
 
+def PublishThreadFront():
+    pub = rospy.Publisher('front_camera/image/compressed', CompressedImage, queue_size=1)
+    rate = rospy.Rate(18)
+    msg = CompressedImage()
+    msg.format = "jpeg"
+    
+    while not rospy.is_shutdown():
+        msg.data = np.array(output_front.frame).tobytes()
+        msg.data = output_front.frame
+        msg.header.stamp = rospy.Time.now()
+        pub.publish(msg)
+        rate.sleep()
+
+def PublishThreadRear():
+    pub = rospy.Publisher('rear_camera/image/compressed', CompressedImage, queue_size=1)
+    rate = rospy.Rate(18)
+    msg = CompressedImage()
+    msg.format = "jpeg"
+    
+    while not rospy.is_shutdown():
+        msg.data = np.array(output_rear.frame).tobytes()
+        msg.header.stamp = rospy.Time.now()
+        pub.publish(msg)
+        rate.sleep()
+
+def runMjpegServer():
+    try:
+        address = ('', 8000)
+        server = StreamingServer(address, StreamingHandler)
+        server.serve_forever()
+    finally:
+        picam_front.stop_recording()
+        picam_rear.stop_recording()
+
+
 picam_front = Picamera2(0)
 picam_rear  = Picamera2(1)
 
@@ -181,10 +231,17 @@ picam_rear.start_recording(JpegEncoder(), FileOutput(output_rear))
 # pixels.fill((125, 125, 125))
 # pixels.fill((0, 0, 0))
 
-try:
-    address = ('', 8000)
-    server = StreamingServer(address, StreamingHandler)
-    server.serve_forever()
-finally:
-    picam_front.stop_recording()
-    picam_rear.stop_recording()
+
+rospy.init_node("mjpeg_server")
+
+front_thread = Thread(target=PublishThreadFront)
+rear_thread = Thread(target=PublishThreadRear)
+mjpeg_thread = Thread(target=runMjpegServer)
+
+front_thread.start()
+rear_thread.start()
+mjpeg_thread.start()
+
+front_thread.join()
+rear_thread.join()
+mjpeg_thread.join()

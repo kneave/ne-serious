@@ -6,4 +6,9 @@
       type="diff_drive.py"
       name="motor_controller" >
   </node>
+  <node
+      pkg="ne-serious"
+      type="battery.py"
+      name="battery_monitor" >
+  </node>
  </launch>
