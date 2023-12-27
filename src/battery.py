@@ -14,16 +14,23 @@ rospy.init_node('battery_monitor_node', anonymous=True)
 
 if __name__ == '__main__':
     try:
-        # Loop until disconnected
-        while True:
+        rate = rospy.Rate(1)
+        
+        min_voltage = 6.8
+        max_voltage = 8.4
+        delta_voltage = max_voltage - min_voltage
+
+        # Loop until disconnected    
+        while not rospy.is_shutdown():
             # Create message
             msg = BatteryState()
             msg.voltage = redboard.adc0
-            msg.location = ""
+            msg.percentage = ((msg.voltage - min_voltage) / delta_voltage)
+
             rospy.loginfo(msg)
             pub.publish(msg)
 
-            sleep(1)
+            rate.sleep()
         
         print("Exiting, controller disconnected.")
 
