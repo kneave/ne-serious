@@ -15,7 +15,7 @@ from threading import Condition, Thread
 from picamera2 import Picamera2
 from picamera2.encoders import JpegEncoder
 from picamera2.outputs import FileOutput
-from libcamera import controls
+import libcamera 
 
 import rospy
 from sensor_msgs.msg import CompressedImage
@@ -183,7 +183,7 @@ class StreamingServer(socketserver.ThreadingMixIn, server.HTTPServer):
 
 def PublishThreadFront():
     pub = rospy.Publisher('front_camera/image/compressed', CompressedImage, queue_size=1)
-    rate = rospy.Rate(12)
+    rate = rospy.Rate(18)
     msg = CompressedImage()
     msg.format = "jpeg"
     
@@ -198,7 +198,7 @@ def PublishThreadFront():
 
 def PublishThreadRear():
     pub = rospy.Publisher('rear_camera/image/compressed', CompressedImage, queue_size=1)
-    rate = rospy.Rate(12)
+    rate = rospy.Rate(18)
     msg = CompressedImage()
     msg.format = "jpeg"
     
@@ -229,8 +229,19 @@ picam_front = Picamera2(0)
 picam_rear  = Picamera2(1)
 
 print("Starting cameras")
-front_cam_config = picam_front.create_video_configuration(main={"size": (1296, 972)})
+
+front_cam_config = picam_front.create_video_configuration(
+    main={
+            "size": (1296, 972)
+          })
 picam_front.configure(front_cam_config)
+picam_front.set_controls({
+        "AeFlickerMode": 1, 
+        "AeFlickerPeriod": 10000,
+        })
+
+picam_front.controls.AwbEnable = False
+# picam_front.controls.AwbMode = 0
 
 # picam_front.video_configuration.size = (1296, 972)
 # picam_front.set_controls({'AeFlickerMode': 1, 'AeFlickerPeriod': 10000})
@@ -242,6 +253,8 @@ print("Front camera started")
 
 
 picam_rear.configure(picam_rear.create_video_configuration(main={"size": (640, 480)}))
+picam_rear.controls.AwbEnable = False
+# picam_rear.controls.AwbMode = 0
 # picam_rear.video_configuration.controls.FrameRate = 18.0
 output_rear = StreamingOutput()
 picam_rear.start_recording(JpegEncoder(), FileOutput(output_rear))
