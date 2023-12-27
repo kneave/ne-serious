@@ -4,6 +4,8 @@
 # Run this script, then point a web browser at http:<this-ip-address>:8000
 # Note: needs simplejpeg to be installed (pip3 install simplejpeg).
 
+import sys
+
 import io
 import logging
 import socketserver
@@ -13,6 +15,7 @@ from threading import Condition, Thread
 from picamera2 import Picamera2
 from picamera2.encoders import JpegEncoder
 from picamera2.outputs import FileOutput
+from libcamera import controls
 
 import rospy
 from sensor_msgs.msg import CompressedImage
@@ -25,8 +28,8 @@ import neopixel
 import signal
 
 def signal_handler(signal, frame):
-    rospy.signal_shutdown()
     print('CTRL-C caught, exiting.')
+    server.shutdown()
     sys.exit(0)
 
 signal.signal(signal.SIGINT, signal_handler)
@@ -92,7 +95,7 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
     brightness = 120
     brightness_min = 50
     brightness_max = 175
-        
+    
     def do_GET(self):
         if self.path == '/':
             self.send_response(301)
@@ -180,68 +183,85 @@ class StreamingServer(socketserver.ThreadingMixIn, server.HTTPServer):
 
 def PublishThreadFront():
     pub = rospy.Publisher('front_camera/image/compressed', CompressedImage, queue_size=1)
-    rate = rospy.Rate(18)
+    rate = rospy.Rate(12)
     msg = CompressedImage()
     msg.format = "jpeg"
     
+    print("Publishing front camera")
     while not rospy.is_shutdown():
         msg.data = np.array(output_front.frame).tobytes()
-        msg.data = output_front.frame
+        # msg.data = output_front.frame
         msg.header.stamp = rospy.Time.now()
         pub.publish(msg)
         rate.sleep()
+    print("Stopped publishing front camera")
 
 def PublishThreadRear():
     pub = rospy.Publisher('rear_camera/image/compressed', CompressedImage, queue_size=1)
-    rate = rospy.Rate(18)
+    rate = rospy.Rate(12)
     msg = CompressedImage()
     msg.format = "jpeg"
     
+    print("Publishing rear camera")
     while not rospy.is_shutdown():
         msg.data = np.array(output_rear.frame).tobytes()
         msg.header.stamp = rospy.Time.now()
         pub.publish(msg)
         rate.sleep()
+    print("Stopped publishing rear camera")
 
 def runMjpegServer():
+    print("Starting mjpeg server")
     try:
-        address = ('', 8000)
-        server = StreamingServer(address, StreamingHandler)
         server.serve_forever()
     finally:
+        print("Stopping mjpeg server")
         picam_front.stop_recording()
         picam_rear.stop_recording()
+        print("Stopped mjpeg server")
 
+address = ('', 8000)
+server = StreamingServer(address, StreamingHandler)
+
+rospy.init_node("mjpeg_server")
 
 picam_front = Picamera2(0)
 picam_rear  = Picamera2(1)
 
-# picam_front.configure(picam_front.create_video_configuration(main={"size": (640, 480)}))
+print("Starting cameras")
+front_cam_config = picam_front.create_video_configuration(main={"size": (1296, 972)})
+picam_front.configure(front_cam_config)
 
-picam_front.video_configuration.size = (640, 480)
-# picam_front.video_configuration.controls.FrameRate = 18.0
+# picam_front.video_configuration.size = (1296, 972)
+# picam_front.set_controls({'AeFlickerMode': 1, 'AeFlickerPeriod': 10000})
+# picam_front.set_controls({'AeFlickerPeriod': 10000})
+
 output_front = StreamingOutput()
 picam_front.start_recording(JpegEncoder(), FileOutput(output_front))
+print("Front camera started")
+
 
 picam_rear.configure(picam_rear.create_video_configuration(main={"size": (640, 480)}))
 # picam_rear.video_configuration.controls.FrameRate = 18.0
 output_rear = StreamingOutput()
 picam_rear.start_recording(JpegEncoder(), FileOutput(output_rear))
-
-# pixels.fill((125, 125, 125))
-# pixels.fill((0, 0, 0))
-
-
-rospy.init_node("mjpeg_server")
+print("Rear camera started")
 
 front_thread = Thread(target=PublishThreadFront)
 rear_thread = Thread(target=PublishThreadRear)
 mjpeg_thread = Thread(target=runMjpegServer)
 
+print("Starting threads")
+print("Starting front thread")
 front_thread.start()
+print("Starting rear thread")
 rear_thread.start()
+print("Starting mjpeg thread")
 mjpeg_thread.start()
+print("Threads started")
 
 front_thread.join()
 rear_thread.join()
 mjpeg_thread.join()
+
+rospy.spin()
