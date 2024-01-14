@@ -13,7 +13,7 @@ from http import server
 from threading import Condition, Thread
 
 from picamera2 import Picamera2
-from picamera2.encoders import JpegEncoder
+from picamera2.encoders import MJPEGEncoder
 from picamera2.outputs import FileOutput
 import libcamera 
 
@@ -26,6 +26,7 @@ import board
 import neopixel
 
 import signal
+
 
 def signal_handler(signal, frame):
     print('CTRL-C caught, exiting.')
@@ -43,6 +44,11 @@ PAGE = """\
 <style>
     body {
         background-color: black;
+    }
+
+    img{
+        max-width: 100%;
+        max-height: 100%;
     }
 
     .parent {
@@ -76,6 +82,8 @@ PAGE = """\
 </html>
 """
 
+EMPTY = "OK"
+
 # <img src="stream_front.mjpg" width="48%" height="480" />
 # <img src="stream_rear.mjpg" width="640" height="480" />
 
@@ -95,6 +103,14 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
     brightness = 120
     brightness_min = 50
     brightness_max = 175
+
+    def sendEmpty(self):        
+        content = EMPTY.encode('utf-8')
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html')
+        self.send_header('Content-Length', len(content))
+        self.end_headers()
+        self.wfile.write(content)
     
     def do_GET(self):
         if self.path == '/':
@@ -116,7 +132,7 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=FRAME')
             self.end_headers()
             try:
-                while not rospy.is_shutdown():
+                while not server.shutdown_requested:
                     with output_front.condition:
                         output_front.condition.wait()
                         frame_front = output_front.frame
@@ -138,7 +154,7 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=FRAME')
             self.end_headers()
             try:    
-                while not rospy.is_shutdown():
+                while not server.shutdown_requested:
                     with output_rear.condition:
                         output_rear.condition.wait()
                         frame_rear = output_rear.frame
@@ -152,25 +168,30 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
                 logging.warning(
                     'Removed streaming client %s: %s',
                     self.client_address, str(e))
+                
         elif self.path == '/lights_on':
             pixels.fill((self.brightness, self.brightness, self.brightness))
-            self.send_response(200)
+            self.sendEmpty()
+
         elif self.path == '/lights_off':
             pixels.fill((0, 0, 0))
-            self.send_response(200)
+            self.sendEmpty()
+
         elif self.path == '/lights_up':
             if self.brightness <= self.brightness_max:
                 self.brightness = self.brightness + 10
 
-            pixels.fill((self.brightness, self.brightness, self.brightness))
-            self.send_response(200)
+            pixels.fill((self.brightness, self.brightness, self.brightness))            
+            self.sendEmpty()
+
         elif self.path == '/lights_down':
             if self.brightness >= self.brightness_min:
                 self.brightness = self.brightness - 10
                 
             print(self.brightness)
             pixels.fill((self.brightness, self.brightness, self.brightness))
-            self.send_response(200)
+            self.sendEmpty()
+
         else:
             self.send_error(404)
             self.end_headers()
@@ -179,11 +200,17 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
 class StreamingServer(socketserver.ThreadingMixIn, server.HTTPServer):
     allow_reuse_address = True
     daemon_threads = True
+    shutdown_requested = False
+
+    def shutdown(self):
+        self.shutdown_requested = True
+        print("Server is shutting down")
+        super().shutdown()
 
 
 def PublishThreadFront():
-    pub = rospy.Publisher('front_camera/image/compressed', CompressedImage, queue_size=1)
-    rate = rospy.Rate(18)
+    pub = rospy.Publisher('ne_serious/front_camera/image/compressed', CompressedImage, queue_size=1)
+    rate = rospy.Rate(30)
     msg = CompressedImage()
     msg.format = "jpeg"
     
@@ -197,8 +224,8 @@ def PublishThreadFront():
     print("Stopped publishing front camera")
 
 def PublishThreadRear():
-    pub = rospy.Publisher('rear_camera/image/compressed', CompressedImage, queue_size=1)
-    rate = rospy.Rate(18)
+    pub = rospy.Publisher('ne_serious/rear_camera/image/compressed', CompressedImage, queue_size=1)
+    rate = rospy.Rate(30)
     msg = CompressedImage()
     msg.format = "jpeg"
     
@@ -223,8 +250,6 @@ def runMjpegServer():
 address = ('', 8000)
 server = StreamingServer(address, StreamingHandler)
 
-rospy.init_node("mjpeg_server")
-
 picam_front = Picamera2(0)
 picam_rear  = Picamera2(1)
 
@@ -232,8 +257,9 @@ print("Starting cameras")
 
 front_cam_config = picam_front.create_video_configuration(
     main={
-            "size": (1296, 972)
+            "size": (1920, 1080)
           })
+
 picam_front.configure(front_cam_config)
 picam_front.set_controls({
         "AeFlickerMode": 1, 
@@ -241,24 +267,17 @@ picam_front.set_controls({
         })
 
 picam_front.controls.AwbEnable = False
-# picam_front.controls.AwbMode = 0
-
-# picam_front.video_configuration.size = (1296, 972)
-# picam_front.set_controls({'AeFlickerMode': 1, 'AeFlickerPeriod': 10000})
-# picam_front.set_controls({'AeFlickerPeriod': 10000})
-
 output_front = StreamingOutput()
-picam_front.start_recording(JpegEncoder(), FileOutput(output_front))
+picam_front.start_recording(MJPEGEncoder(), FileOutput(output_front))
 print("Front camera started")
 
-
-picam_rear.configure(picam_rear.create_video_configuration(main={"size": (640, 480)}))
+picam_rear.configure(picam_rear.create_video_configuration(main={"size": (1920, 1080)}))
 picam_rear.controls.AwbEnable = False
-# picam_rear.controls.AwbMode = 0
-# picam_rear.video_configuration.controls.FrameRate = 18.0
 output_rear = StreamingOutput()
-picam_rear.start_recording(JpegEncoder(), FileOutput(output_rear))
+picam_rear.start_recording(MJPEGEncoder(), FileOutput(output_rear))
 print("Rear camera started")
+
+rospy.init_node("mjpeg_server")
 
 front_thread = Thread(target=PublishThreadFront)
 rear_thread = Thread(target=PublishThreadRear)
