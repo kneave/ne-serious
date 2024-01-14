@@ -12,13 +12,25 @@ msg_timeout = rospy.Duration(0.5)
 last_msg_received = rospy.Time.from_sec(time.time())
 
 rb = redboard.RedBoard()
-tilt = 0.5
+
+tilt = 0.4
+boom = -0.2
+top_fork = 0.2
+bottom_fork = 0.4
+
 motor0 = 0
 motor1 = 0
 
 rb.m0_invert = False         # front left 
 rb.m1_invert = False        # front right
-rb.s7_config = 750, 1950
+
+rb.s7_config = 900, 2150
+rb.s8_config = 900, 2150
+
+cam_tilt_servo = rb.s7
+boom_servo = rb.s8
+top_fork_servo = rb.s9
+bottom_fork_servo = rb.s10
 
 # from https://electronics.stackexchange.com/questions/19669/algorithm-for-mixing-2-axis-analog-input-to-control-a-differential-motor-drive
 def steering(x, y):
@@ -58,11 +70,10 @@ def scaleinput(input, invert, scale):
     return scaled
 
 def callback(data):
-    global last_msg_received, tilt
-    # rospy.loginfo(rospy.get_caller_id() + 'RCVD: %s', data)
+    global last_msg_received, tilt, boom, top_fork, bottom_fork
+    rospy.loginfo(rospy.get_caller_id() + 'RCVD: %s', data)
     last_msg_received = rospy.Time.now()
 
-    control_movement = data.buttons[2] == 1
     high_speed = data.buttons[4] == 0
     x, y = data.axes[0], data.axes[1]
 
@@ -85,21 +96,35 @@ def callback(data):
 
     setmotors(left, right)
 
-    tilt_diff = scaleinput(data.axes[4], False, 40)  
-    tilt += tilt_diff   
+    tilt_diff = scaleinput(data.axes[3], False, 40)  
+    tilt = limitinput(tilt + tilt_diff)   
 
-    if(tilt > 1):
-        tilt = 1
-    elif(tilt < -1):
-        tilt = -1
-    
-    print(tilt)
+    boom_diff = scaleinput(data.axes[7], False, 40)
+    boom = limitinput(boom + boom_diff)
+
+    top_fork_diff = scaleinput(data.axes[5], False, 40)
+    top_fork = limitinput(top_fork + top_fork_diff)
+
+    bottom_fork_diff = scaleinput(data.axes[9], False, 40)
+    bottom_fork = limitinput(bottom_fork + bottom_fork_diff)
+
     rb.s7 = tilt
+    rb.s8 = boom
+    rb.s9 = top_fork
+    rb.s10 = bottom_fork
 
 
 def setmotors(m1, m2):
     rb.m0 = m1
     rb.m1 = m2
+
+def limitinput(input):
+    if(input > 1):
+        input = 1
+    elif(input < -1):
+        input = -1
+    
+    return input
 
 def timeout_check(event):
     timediff = rospy.Time.now() - last_msg_received
@@ -120,6 +145,11 @@ def listener():
     rospy.Timer(msg_timeout, timeout_check)
 
     rospy.spin()
+
+    rb.s7 = None
+    rb.s8 = None
+    rb.s9 = None
+    rb.s10 = None
 
 if __name__ == '__main__':
     print("Motor node listening...")
