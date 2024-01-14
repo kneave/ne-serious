@@ -1,0 +1,46 @@
+<?xml version="1.0" ?>
+<robot name="serious">
+
+    <!-- Base Link -->
+    <link name="base_link">
+        <!-- Add geometry, visual, and collision properties here -->
+    </link>
+
+    <!-- IMU -->
+    <link name="imu">
+        <!-- Add geometry, visual, and collision properties here -->
+    </link>
+
+    <!-- LaserScan -->
+    <link name="laserscan">
+        <!-- Add geometry, visual, and collision properties here -->
+    </link>
+
+    <!-- Camera -->
+    <link name="camera">
+        <!-- Add geometry, visual, and collision properties here -->
+    </link>
+
+    <!-- Joint connections -->
+    <joint name="base_link_to_imu" type="fixed">
+        <parent link="laserscan"/>
+        <child link="imu"/>
+        <!-- Add joint properties here -->
+        <origin xyz="-0.04 0 -0.08" rpy="0 0 0"/>
+    </joint>
+
+    <joint name="base_link_to_laserscan" type="fixed">
+        <parent link="base_link"/>
+        <child link="laserscan"/>
+        <!-- Add joint properties here -->
+        <origin xyz="0.04 0 0.15" rpy="0 0 0"/>
+    </joint>
+
+    <joint name="base_link_to_camera" type="fixed">
+        <parent link="imu"/>
+        <child link="camera"/>
+        <!-- Add joint properties here -->
+        <origin xyz="0.1 0 0" rpy="0 0 0"/>
+    </joint>
+
+</robot>
